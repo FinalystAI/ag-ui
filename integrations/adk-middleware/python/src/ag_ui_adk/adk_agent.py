@@ -12,7 +12,7 @@ from datetime import datetime
 from ag_ui.core import (
     RunAgentInput, BaseEvent, EventType,
     RunStartedEvent, RunFinishedEvent, RunErrorEvent,
-    ToolCallEndEvent, SystemMessage,ToolCallResultEvent
+    ToolCallEndEvent, SystemMessage,ToolCallResultEvent, MessagesSnapshotEvent
 )
 
 from google.adk import Runner
@@ -361,6 +361,51 @@ class ADKAgent:
         Yields:
             AG-UI protocol events
         """
+        
+        # Share messages for empty request
+        if not input.messages and not input.tools:
+            # Emit RUN_STARTED
+            logger.debug(
+                f"Emitting RUN_STARTED for thread {input.thread_id}, run {input.run_id}"
+            )
+            yield RunStartedEvent(
+                type=EventType.RUN_STARTED,
+                thread_id=input.thread_id,
+                run_id=input.run_id,
+            )
+            
+            event_translator = EventTranslator()
+            # Extract necessary information
+            user_id = self._get_user_id(input)
+            app_name = self._get_app_name(input)
+            session = await self._session_manager.get_or_create_session(
+                session_id=input.thread_id,
+                app_name=app_name,
+                user_id=user_id,
+                initial_state=input.state,
+            )
+            adk_events = getattr(session, "events", [])
+            messages = await event_translator.translate_to_messages(
+                adk_events=adk_events,
+                thread_id=input.thread_id,
+                run_id=input.run_id,
+            )
+            logger.debug(
+                f"Emitting MessagesSnapshotEvent for thread {input.thread_id}, run {input.run_id}"
+            )
+            yield MessagesSnapshotEvent(messages=messages)
+            
+            # Emit RUN_FINISHED
+            logger.debug(
+                f"Emitting RUN_FINISHED for thread {input.thread_id}, run {input.run_id}"
+            )
+            yield RunFinishedEvent(
+                type=EventType.RUN_FINISHED,
+                thread_id=input.thread_id,
+                run_id=input.run_id,
+            )
+            return
+        
         unseen_messages = await self._get_unseen_messages(input)
 
         if not unseen_messages:

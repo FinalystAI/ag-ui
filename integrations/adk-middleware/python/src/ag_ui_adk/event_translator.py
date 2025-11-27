@@ -14,7 +14,8 @@ from ag_ui.core import (
     TextMessageStartEvent, TextMessageContentEvent, TextMessageEndEvent,
     ToolCallStartEvent, ToolCallArgsEvent, ToolCallEndEvent,
     ToolCallResultEvent, StateSnapshotEvent, StateDeltaEvent,
-    CustomEvent
+    CustomEvent, UserMessage, AssistantMessage, Message, ToolMessage, ToolCall,
+    FunctionCall,
 )
 import json
 from google.adk.events import Event as ADKEvent
@@ -240,7 +241,72 @@ class EventTranslator:
         except Exception as e:
             logger.error(f"Error translating ADK event: {e}", exc_info=True)
             # Don't yield error events here - let the caller handle errors
-    
+            
+    async def translate_to_messages(self, adk_events: list[ADKEvent], thread_id: str,
+        run_id: str) -> list[Message]:
+        """Translate events to Messages.
+
+        Args:
+            adk_events: The ADK events containing text content
+            thread_id: The AG-UI thread ID
+            run_id: The AG-UI run ID
+            
+        Returns:
+            List of AG-UI Messages
+        """
+        
+        logger.debug(f"Events to translate to messages: {adk_events}")
+        
+        showable_adk_events = list(
+    filter(
+        lambda adk_event: adk_event.content
+        and hasattr(adk_event.content, "parts")
+        and adk_event.content.parts
+        and (
+            adk_event.content.parts[0].text
+            or adk_event.get_function_calls()
+            or adk_event.get_function_responses()
+        )
+        and not getattr(adk_event, "partial", False),
+        adk_events,
+    )
+)
+        logger.debug(f"Filtered Events to translate to messages: {showable_adk_events}")
+        
+        messages: list[Message] = []
+        for adk_event in showable_adk_events:
+            responses = adk_event.get_function_responses()
+            if adk_event.content.role == "user" and not responses:
+                messages.append(
+                    UserMessage(
+                        id=adk_event.id,
+                        content=adk_event.content.parts[0].text
+                    )
+                )
+            elif responses:
+                for func_response in responses:
+                    tool_call_id = getattr(func_response, 'id', str(uuid.uuid4()))
+                    messages.append(
+                        ToolMessage(
+                            id=adk_event.id,
+                            content=_serialize_tool_response(func_response.response),
+                            tool_call_id=tool_call_id,
+                        )
+                    )
+            elif adk_event.content.role == "model":
+                function_calls = adk_event.get_function_calls()
+                tool_calls = await self._translate_function_calls_to_tool_calls(
+                    function_calls=function_calls,
+                )
+                messages.append(
+                    AssistantMessage(
+                        id=adk_event.id,
+                        content=adk_event.content.parts[0].text,
+                        tool_calls=tool_calls if tool_calls else None,
+                    )
+                )
+        return messages
+
     async def _translate_text_content(
         self,
         adk_event: ADKEvent,
@@ -506,7 +572,38 @@ class EventTranslator:
             # Clean up tracking
             self._active_tool_calls.pop(tool_call_id, None)
 
-    
+    async def _translate_function_calls_to_tool_calls(
+        self,
+        function_calls: list[types.FunctionCall],
+    ) -> list[ToolCall]:
+        """Translate function calls from ADK event to AG-UI tool call messages.
+
+        Args:
+            adk_event: The ADK event containing function calls
+            function_calls: List of function calls from the event
+            thread_id: The AG-UI thread ID
+            run_id: The AG-UI run ID
+
+        Yields:
+            ToolCall messages
+        """
+
+        tool_calls: list[ToolCall] = []
+        for func_call in function_calls:
+            tool_call_id = getattr(func_call, 'id', str(uuid.uuid4()))
+            if hasattr(func_call, 'args') and func_call.args:
+                # Convert args to string (JSON format)
+                import json
+                args_str = json.dumps(func_call.args) if isinstance(func_call.args, dict) else str(func_call.args)
+            tool_call = ToolCall(
+                id=tool_call_id,
+                function=FunctionCall(
+                    name=func_call.name,
+                    arguments=args_str
+                )
+            )
+            tool_calls.append(tool_call)
+        return tool_calls
 
     async def _translate_function_response(
         self,
