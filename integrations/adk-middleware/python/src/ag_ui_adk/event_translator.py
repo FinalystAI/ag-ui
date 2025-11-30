@@ -210,6 +210,7 @@ class EventTranslator:
             # Handle function responses and yield the tool response event
             # this is essential for scenerios when user has to render function response at frontend
             if hasattr(adk_event, 'get_function_responses'):
+                logger.debug(f"Event with function results: {adk_event}")
                 function_responses = adk_event.get_function_responses()
                 if function_responses:
                     # Function responses should be emmitted to frontend so it can render the response as well
