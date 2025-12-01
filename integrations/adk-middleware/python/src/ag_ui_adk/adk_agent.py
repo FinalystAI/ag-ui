@@ -14,7 +14,7 @@ from ag_ui.core import (
     RunStartedEvent, RunFinishedEvent, RunErrorEvent,
     ToolCallEndEvent, SystemMessage,ToolCallResultEvent, MessagesSnapshotEvent
 )
-
+from structlog.contextvars import bind_contextvars
 from google.adk import Runner
 from google.adk.agents import BaseAgent, RunConfig as ADKRunConfig
 from google.adk.agents.run_config import StreamingMode
@@ -361,6 +361,8 @@ class ADKAgent:
         Yields:
             AG-UI protocol events
         """
+        
+        bind_contextvars(thread_id=input.thread_id, run_id=input.run_id)
         
         # Share messages for empty request
         if not input.messages and not input.tools:
