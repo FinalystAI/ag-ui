@@ -45,6 +45,14 @@ export const menuIntegrations: MenuIntegrationConfig[] = [
     ],
   },
   {
+    id: "langchain",
+    name: "LangChain",
+    features: [
+      "agentic_chat",
+      "tool_based_generative_ui",
+    ],
+  },
+  {
     id: "mastra",
     name: "Mastra",
     features: [
@@ -201,5 +209,16 @@ export const menuIntegrations: MenuIntegrationConfig[] = [
     id: "a2a",
     name: "A2A",
     features: ["a2a_chat"],
+  },
+  {
+    id: "aws-strands",
+    name: "AWS Strands",
+    features: [
+      "agentic_chat",
+      "backend_tool_rendering",
+      "agentic_generative_ui",
+      "shared_state",
+      "human_in_the_loop",
+    ],
   },
 ];
