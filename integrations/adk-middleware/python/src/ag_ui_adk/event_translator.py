@@ -306,19 +306,19 @@ class EventTranslator:
         logger.debug(f"Events to translate to messages: {adk_events}")
         
         showable_adk_events = list(
-    filter(
-        lambda adk_event: adk_event.content
-        and hasattr(adk_event.content, "parts")
-        and adk_event.content.parts
-        and (
-            adk_event.content.parts[0].text
-            or adk_event.get_function_calls()
-            or adk_event.get_function_responses()
+            filter(
+                lambda adk_event: adk_event.content
+                and hasattr(adk_event.content, "parts")
+                and adk_event.content.parts
+                and (
+                    adk_event.content.parts[0].text
+                    or adk_event.get_function_calls()
+                    or adk_event.get_function_responses()
+                )
+                and not getattr(adk_event, "partial", False),
+                adk_events,
+            )
         )
-        and not getattr(adk_event, "partial", False),
-        adk_events,
-    )
-)
         logger.debug(f"Filtered Events to translate to messages: {showable_adk_events}")
         
         messages: list[Message] = []
